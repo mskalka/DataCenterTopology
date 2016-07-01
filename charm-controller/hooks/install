@@ -1,0 +1,3 @@
+#!/bin/bash
+set -eu
+status-set idle "Ready to begin network discovery"

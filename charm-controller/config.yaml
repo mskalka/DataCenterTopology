@@ -1,0 +1,8 @@
+options:
+  machines:
+    type: string
+    desription: |
+      List units that you want to use for the crushmap here in space delineated format.
+
+
+

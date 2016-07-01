@@ -1,0 +1,13 @@
+name: dct-node
+summary: Node to communicate with main DCT charm
+maintainer: Michael Skalka <Michael.Skalka@mskalka-vbox>
+description: |
+  Gathers information about the networked machines and returns it to the DCT controller
+tags:
+  - misc
+subordinate: true
+
+requires:
+  requires-relation:
+    interface: datacentertopology
+
