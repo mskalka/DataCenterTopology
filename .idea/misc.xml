@@ -56,4 +56,7 @@
     <ConfirmationsSetting value="0" id="Remove" />
   </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_1_3" default="true" assert-keyword="false" jdk-15="false" />
+  <component name="RustProjectSettings">
+    <option name="toolchainHomeDirectory" value="/usr/local/bin" />
+  </component>
 </project>

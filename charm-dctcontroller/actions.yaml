@@ -1,5 +1,3 @@
-discover-neighbors:
-  description: Populates each subordinate service with its neighbors
 create-crushmap:
   description: Creates a crushmap using the map generated with discover-neighbors
 add-units:

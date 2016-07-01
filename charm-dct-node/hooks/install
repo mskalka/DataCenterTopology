@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+status-set maintenance "Building a list of neighbors"
+
+relation-set unitid=$JUJU_UNIT_NAME
+relation-set hostname=$HOSTNAME
+realtion-set neighbors="exec ./actions/discover-neighbors"
+
+status-set idle "Finished building neighbor list"

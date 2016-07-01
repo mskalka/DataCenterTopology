@@ -5,9 +5,18 @@ description: |
   Gathers information about the networked machines and returns it to the DCT controller
 tags:
   - misc
+
 subordinate: true
 
 requires:
-  requires-relation:
-    interface: datacentertopology
+  controller:
+    interface: dctcontroller
+
+provides:
+  unitid:
+    interface: unitid
+  hostname:
+    interface: hostname
+  neighbors:
+    interface: neighbors
 

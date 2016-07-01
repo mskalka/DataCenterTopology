@@ -11,7 +11,7 @@ use std::thread;
 use std::sync::mpsc::{channel, Sender};
 use std::time::{Instant, Duration};
 
-pub fn send_and_receive() -> Vec<Ipv4Addr> {
+pub fn send_and_receive(juju_unit_ips: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
 
     let mut nodes: Vec<Ipv4Addr> = vec![];
     let (transmit_channel, receiver_channel) = channel();
@@ -21,12 +21,13 @@ pub fn send_and_receive() -> Vec<Ipv4Addr> {
         let transmit_channel = transmit_channel.clone();
         let interface = interface.clone();
         let interface2 = interface.clone();
+        let unitips = juju_unit_ips.clone();
 
         thread::spawn(move|| {
             recieve_packets(interface, transmit_channel);
         });
         thread::spawn(move|| {
-            send_packets(interface2);
+            send_packets(interface2, unitips);
         });
     }
     // Five second timeout on receiver
@@ -47,7 +48,7 @@ pub fn send_and_receive() -> Vec<Ipv4Addr> {
 
 
 // Create and send packets given an interface
-pub fn send_packets(interface: NetworkInterface) {
+pub fn send_packets(interface: NetworkInterface, juju_unit_ips: Vec<Ipv4Addr>) {
 
     // Create the transmission channel in order to send packets
     let (mut tx, _) = match datalink::channel(&interface, &Default::default()) {
@@ -100,9 +101,7 @@ pub fn send_packets(interface: NetworkInterface) {
     // Iterate over each address in the last octet of the sender's IP to ping each of its
     // neighbors with an ARP request.
     // TODO: Find a way to ping entire subnet, not just last octet
-    for n in 1..255 {
-
-        let targetip = Ipv4Addr::new(senderoctets[0], senderoctets[1], senderoctets[2], n);
+    for targetip in juju_unit_ips {
         {
             MutableArpPacket::new(ethernetwrapper.payload_mut()).unwrap().set_target_proto_addr(targetip);
         }

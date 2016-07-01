@@ -1,0 +1,6 @@
+discover-neighbors:
+  description: Discovers local neighbors
+    params:
+      hostname:
+        type: string
+        description: Hostname of machine

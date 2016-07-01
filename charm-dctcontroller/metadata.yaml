@@ -1,4 +1,4 @@
-name: datacentertopology
+name: dctcontroller
 summary: Programatically creates smart crushmaps for Ceph. 
 maintainer: Michael Skalka <MichaelSkalka@gmail.com>
 description: |
@@ -6,6 +6,17 @@ description: |
   The current issue with crushmap creation in Ceph is the limited administrative control over automatic generation, contrasted with difficult manual configuration.
 tags:
   - network
+
 provides:
   controller:
-    interface: datacentertopology
+    interface: dctcontroller
+  unitips:
+    interface: unitips
+
+requires:
+  unitid:
+    interface: unitid
+  hostname:
+    interface: hostname
+  neighbors:
+    interface: neighbors
