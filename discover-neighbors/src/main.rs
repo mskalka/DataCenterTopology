@@ -1,41 +1,51 @@
 extern crate pnet;
 extern crate juju;
+extern crate log;
 
+use std::str::FromStr;
 use std::net::Ipv4Addr;
 use std::env;
 use std::str;
-use std::u8;
+use std::process::Command;
+use std::collections::HashMap;
+use log::LogLevel;
 
-mod clusters;
 mod networking;
 
 fn main() {
 
-    let juju_unit_ips_raw: String = juju::relation_get("unitips").unwrap();
+    let juju_relation_ids = juju::relation_ids_by_identifier("controller").unwrap();
+    println!("Relation ids: {:?}", juju_relation_ids);
 
-    let mut juju_unit_ips: Vec<Ipv4Addr> = vec![];
+    let relation_id = &juju_relation_ids[0];
 
-    for ip in juju_unit_ips_raw.split_whitespace() {
-        let octets: Vec<&str> = ip.split(".").collect();
-        juju_unit_ips.push(Ipv4Addr::new(u8::from_str_radix(octets[0], 10).unwrap(),
-                                         u8::from_str_radix(octets[1], 10).unwrap(),
-                                         u8::from_str_radix(octets[2], 10).unwrap(),
-                                         u8::from_str_radix(octets[3], 10).unwrap()));
+    let controller = juju::relation_list_by_id(&relation_id).unwrap();
+
+    let juju_unit_list: String = juju::relation_get_by_id("related-units", &relation_id, &controller[0]).unwrap();
+    println!("Unit list: {}", juju_unit_list);
+
+    let mut juju_machine_ids_with_ip: HashMap<String, Ipv4Addr> = HashMap::new();
+
+    for unit in juju_unit_list.split_whitespace() {
+
+        println!("Unit to decompose: {}", unit);
+
+        let identifier: Vec<&str> = unit.split('/').collect();
+        let name:String = identifier[0].to_owned();
+        let id = identifier[1].parse::<usize>().unwrap();
+        let relation = juju::Relation {name: name, id: id};
+        let ip = juju::relation_get_by_id("private-address", &relation_id, &relation).unwrap();
+        let hostname = juju::relation_get_by_id("hostname", &relation_id, &relation).unwrap();
+        let ip = ip.trim();
+        println!("{}", &ip);
+        juju_machine_ids_with_ip.insert(hostname, Ipv4Addr::from_str(&ip).unwrap());
     }
+    println!("Known IPs: {:?}", juju_machine_ids_with_ip);
+
     //Get list of neighbor IPs using arping
-    let mut neighbor_ips = networking::send_and_receive(juju_unit_ips);
+    let neighbor_list = networking::send_and_receive(juju_machine_ids_with_ip);
 
-    // Clean up list and remove any IPs that are not in the nodeIPlist given by juju
-    neighbor_ips.sort();
-    neighbor_ips.dedup();
+    let neighbors_formatted = format!("{:?}",neighbor_list);
 
-    let mut neighbor_list: String = "".to_string();
-    for address in neighbor_ips {
-        let add = format!("{}", address);
-        let add = add.to_string();
-        neighbor_list = neighbor_list + &add + " ";
-
-    }
-    let uuid = juju::relation_get("uuid");
-    juju::relation_set("neighbors", &neighbor_list);
+    juju::relation_set_by_id("neighbors", &neighbors_formatted, &relation_id);
 }

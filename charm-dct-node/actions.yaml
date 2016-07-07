@@ -1,6 +1,6 @@
 discover-neighbors:
-  description: Discovers local neighbors
-    params:
-      hostname:
-        type: string
-        description: Hostname of machine
+  description: |
+    Discovers neighbors located on the same physical switch
+
+show-data:
+  description: Shows the current dataset on the node

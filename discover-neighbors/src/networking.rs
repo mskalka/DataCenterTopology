@@ -10,8 +10,10 @@ use std::net::{Ipv4Addr, Ipv6Addr, IpAddr};
 use std::thread;
 use std::sync::mpsc::{channel, Sender};
 use std::time::{Instant, Duration};
+use std::collections::HashMap;
 
-pub fn send_and_receive(juju_unit_ips: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
+
+pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) -> HashMap<String, Ipv4Addr> {
 
     let mut nodes: Vec<Ipv4Addr> = vec![];
     let (transmit_channel, receiver_channel) = channel();
@@ -21,7 +23,7 @@ pub fn send_and_receive(juju_unit_ips: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
         let transmit_channel = transmit_channel.clone();
         let interface = interface.clone();
         let interface2 = interface.clone();
-        let unitips = juju_unit_ips.clone();
+        let unitips = juju_machine_list.clone();
 
         thread::spawn(move|| {
             recieve_packets(interface, transmit_channel);
@@ -43,12 +45,19 @@ pub fn send_and_receive(juju_unit_ips: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
             }
         }
     }
-    nodes
+    let mut neighbors: HashMap<String, Ipv4Addr> = HashMap::new();
+
+    for (machine, ip) in juju_machine_list {
+        if nodes.contains(&ip){
+            neighbors.insert(machine, ip);
+        }
+    }
+    neighbors
 }
 
 
 // Create and send packets given an interface
-pub fn send_packets(interface: NetworkInterface, juju_unit_ips: Vec<Ipv4Addr>) {
+pub fn send_packets(interface: NetworkInterface, juju_machines: HashMap<String, Ipv4Addr>) {
 
     // Create the transmission channel in order to send packets
     let (mut tx, _) = match datalink::channel(&interface, &Default::default()) {
@@ -101,9 +110,9 @@ pub fn send_packets(interface: NetworkInterface, juju_unit_ips: Vec<Ipv4Addr>) {
     // Iterate over each address in the last octet of the sender's IP to ping each of its
     // neighbors with an ARP request.
     // TODO: Find a way to ping entire subnet, not just last octet
-    for targetip in juju_unit_ips {
+    for targetip in juju_machines.values() {
         {
-            MutableArpPacket::new(ethernetwrapper.payload_mut()).unwrap().set_target_proto_addr(targetip);
+            MutableArpPacket::new(ethernetwrapper.payload_mut()).unwrap().set_target_proto_addr(*targetip);
         }
         // Change the MutableEthernetPacket to an EthernetPacket
         let packet = ethernetwrapper.to_immutable();

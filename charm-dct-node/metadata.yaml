@@ -6,11 +6,13 @@ description: |
 tags:
   - misc
 
-subordinate: true
+subordinate: false
 
 requires:
   controller:
-    interface: dctcontroller
+    interface: controller
+  related-units:
+      interface: related-units
 
 provides:
   unitid:
