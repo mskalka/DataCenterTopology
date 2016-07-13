@@ -13,7 +13,7 @@ use std::time::{Instant, Duration};
 use std::collections::HashMap;
 
 
-pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) -> HashMap<String, Ipv4Addr> {
+pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) ->  HashMap<String, Ipv4Addr> {
 
     let mut nodes: Vec<Ipv4Addr> = vec![];
     let (transmit_channel, receiver_channel) = channel();
@@ -32,9 +32,10 @@ pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) -> HashMap
             send_packets(interface2, unitips);
         });
     }
-    // Five second timeout on receiver
+
+    // Ten second timeout on receiver
     let mut now = Instant::now();
-    while now.elapsed() <= Duration::new(5,0) {
+    while now.elapsed() <= Duration::new(10,0) {
         match receiver_channel.try_recv(){
             Ok(item) => {
                 nodes.push(item);
@@ -105,7 +106,7 @@ pub fn send_packets(interface: NetworkInterface, juju_machines: HashMap<String, 
         arppacket.set_proto_addr_len(4);
     }
 
-    let senderoctets = senderipv4.octets();
+    //let senderoctets = senderipv4.octets();
 
     // Iterate over each address in the last octet of the sender's IP to ping each of its
     // neighbors with an ARP request.

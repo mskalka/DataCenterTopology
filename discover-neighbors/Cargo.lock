@@ -1,9 +1,9 @@
 [root]
-name = "discover-neighbors"
+name = "controller-relation-changed"
 version = "0.1.0"
 dependencies = [
  "charmhelpers 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "juju 0.5.0",
+ "juju 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pnet 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -37,7 +37,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "juju"
-version = "0.5.0"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "charmhelpers 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",

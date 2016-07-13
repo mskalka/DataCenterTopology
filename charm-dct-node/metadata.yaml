@@ -13,6 +13,8 @@ requires:
     interface: controller
   related-units:
       interface: related-units
+  ready:
+    interface: ready
 
 provides:
   unitid:

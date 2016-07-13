@@ -4,24 +4,62 @@ extern crate log;
 
 use std::str::FromStr;
 use std::net::Ipv4Addr;
-use std::env;
 use std::str;
-use std::process::Command;
 use std::collections::HashMap;
-use log::LogLevel;
+use std::env;
+use std::time::Duration;
+use std::thread::sleep;
 
 mod networking;
 
-fn main() {
 
-    let juju_relation_ids = juju::relation_ids_by_identifier("controller").unwrap();
-    println!("Relation ids: {:?}", juju_relation_ids);
+fn main () {
+    let unit_id = env::var("JUJU_UNIT_NAME").unwrap_or("".to_string());
+    let unit = parse_unit_into_relation(unit_id);
 
-    let relation_id = &juju_relation_ids[0];
+    let ready_status: String = juju::relation_get("ready").unwrap().to_string();
+    let ready_status = ready_status.trim_matches('\n').trim();
+    let finished_status: String = juju::relation_get_by_unit("finished", &unit).unwrap().to_string();
+    let finished_status = finished_status.trim_matches('\n').trim();
+    let results: String;
 
-    let controller = juju::relation_list_by_id(&relation_id).unwrap();
 
-    let juju_unit_list: String = juju::relation_get_by_id("related-units", &relation_id, &controller[0]).unwrap();
+
+
+    println!("Ready status: {}", ready_status);
+    if (ready_status == "1") && (finished_status != "1") {
+        println!("Starting network discovery");
+        results = network_discovery().trim_matches('\n').trim().to_string();
+        println!("Results: {}", results);
+
+        juju::relation_set("neighbors", &results);
+
+        let mut finished: bool = false;
+        let mut count = 0;
+        while !finished && count < 10 {
+            let test_set = juju::relation_get_by_unit("neighbors", &unit).unwrap();
+            let test_set = test_set.trim_matches('\n').trim();
+            if test_set == results {
+                juju::status_set(juju::Status{status_type: juju::StatusType::Waiting,
+                                            message: "Finished network discovery".to_string()});
+                juju::relation_set("finished", "1");
+                finished = true;
+
+            } else {
+                juju::relation_set("neighbors", &results);
+                count += 1;
+                sleep(Duration::new(5,0));
+            }
+        }
+    }
+
+
+
+}
+
+fn network_discovery() -> String{
+
+    let juju_unit_list: String = juju::relation_get("related-units").unwrap();
     println!("Unit list: {}", juju_unit_list);
 
     let mut juju_machine_ids_with_ip: HashMap<String, Ipv4Addr> = HashMap::new();
@@ -30,22 +68,40 @@ fn main() {
 
         println!("Unit to decompose: {}", unit);
 
-        let identifier: Vec<&str> = unit.split('/').collect();
-        let name:String = identifier[0].to_owned();
-        let id = identifier[1].parse::<usize>().unwrap();
-        let relation = juju::Relation {name: name, id: id};
-        let ip = juju::relation_get_by_id("private-address", &relation_id, &relation).unwrap();
-        let hostname = juju::relation_get_by_id("hostname", &relation_id, &relation).unwrap();
+        let relation = parse_unit_into_relation(unit.to_string());
+        let ip = juju::relation_get_by_unit("private-address", &relation).unwrap();
+        let hostname = juju::relation_get_by_unit("hostname", &relation).unwrap();
         let ip = ip.trim();
-        println!("{}", &ip);
         juju_machine_ids_with_ip.insert(hostname, Ipv4Addr::from_str(&ip).unwrap());
     }
     println!("Known IPs: {:?}", juju_machine_ids_with_ip);
 
     //Get list of neighbor IPs using arping
     let neighbor_list = networking::send_and_receive(juju_machine_ids_with_ip);
+    let mut neighbors_formatted: String = "".to_string();
 
-    let neighbors_formatted = format!("{:?}",neighbor_list);
+    for (machine, ip) in neighbor_list {
+        let trimmed_machine = &machine.trim_matches('\n').trim();
+        neighbors_formatted = format!("{} {}", &neighbors_formatted.trim_matches('\n')
+                                                    .trim()
+                                                    .to_string(),
+                                                    &trimmed_machine);
+    }
 
-    juju::relation_set_by_id("neighbors", &neighbors_formatted, &relation_id);
+
+    let unit_id = env::var("JUJU_UNIT_NAME").unwrap_or("".to_string());
+    let unit = parse_unit_into_relation(unit_id);
+
+    neighbors_formatted
+
+}
+
+fn parse_unit_into_relation(unit: String) -> juju::Relation {
+    let v: Vec<&str> = unit.split('/').collect();
+    let id: usize = v[1].parse::<usize>().unwrap();
+    let parsed_unit = juju::Relation {
+        name: v[0].to_string(),
+        id: id,
+    };
+    parsed_unit
 }
