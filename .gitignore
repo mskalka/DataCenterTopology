@@ -1,0 +1,18 @@
+# Created by .ignore support plugin (hsz.mobi)
+### JetBrains template
+# Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and Webstorm
+# Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
+
+# User-specific stuff:
+.idea
+
+
+charm-dct-controller/trusty
+charm-dct-node/trusty
+create-crushmap/target
+begin-dscovery/target
+discover-neighbors/target
+controller-relation-joined/target
+controller-relation-changed/target
+
+show-data

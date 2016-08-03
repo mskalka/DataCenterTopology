@@ -13,7 +13,6 @@ creates the crushmap from those clusters.
 
 */
 
-
 fn main (){
 
     let juju_relation_ids = juju::relation_ids_by_identifier("controller").unwrap();
@@ -165,26 +164,24 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
             bucket_items.push((*index.unwrap(), Some(machine.to_string())));
         }
 
-        let bucket: crushtool::Bucket = crushtool::Bucket {
-            struct_size: 4,
-            id: current_index,
-            bucket_type: crushtool::OpCode::Take,
-            alg: crushtool::BucketAlg::Straw,
-            hash: 0,
-            weight: 0,
-            size: members.len() as u32,
-            items: bucket_items,
-            perm_n: 0,
-            perm: members.len() as u32,
-        };
-
-        let cbs = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
-            bucket: bucket,
+        let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
+            bucket: crushtool::Bucket {
+                struct_size: 4,
+                id: current_index,
+                bucket_type: crushtool::OpCode::Take,
+                alg: crushtool::BucketAlg::Straw,
+                hash: 0,
+                weight: 0,
+                size: members.len() as u32,
+                items: bucket_items,
+                perm_n: 0,
+                perm: members.len() as u32,
+            },
             item_weights: vec![(0, 0), (0, 0), (0, 0)]
 
         });
         new_rack_buckets.push((current_index, Some(name.to_string())));
-        current_buckets.push(cbs);
+        current_buckets.push(bucket);
         name_map.insert(name, current_index);
         current_index += -1;
     }
@@ -267,34 +264,6 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
     };
 
     new_crushmap
-
-    /*
-    Take decoded crushmap ->
-        X Get lowest lowest index value
-
-        X Pull items map out of crushmap
-
-        X Hashmap of machine-id, index
-
-        X hashmap of whole host buckets by id: incldues the nested OSD bucket
-
-        -> create new bucket per rack:
-            -> Name something like "Rack A, Rack B.."
-            ->ID is one less than lowest index value
-            -> add each machine from "rack" into the bucket by ID
-
-        Create new default bucket
-            -> add our rack IDs to the bucket items
-
-        Create new CrushMap
-            -> Add our racks to name-map
-
-
-        Compile
-        Push to ceph
-
-    */
-
 
 }
 
