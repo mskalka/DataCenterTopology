@@ -1,1 +1,0 @@
-{"rustc":11871947434854807676,"target":8510907398134368010,"profile":13023446655302672390,"local":{"variant":"Precalculated","fields":["0.9.0"]},"features":"Some([\"default\", \"syntex\", \"syntex_syntax\", \"with-syntex\"])","deps":[["regex v0.1.71",11417655010090800771],["syntex v0.31.0",16695954553427170187],["syntex_syntax v0.31.0",4406312267615757139]],"rustflags":[]}
