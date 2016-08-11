@@ -1,10 +1,14 @@
-extern crate juju;
 extern crate crushtool;
+#[macro_use]
+extern crate log;
+extern crate juju;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::prelude::*;
 use std::fs::File;
+use std::path::Path;
+use std::process::Command;
 
 /*
 Here is where the controller takes input from the subordinate services,
@@ -70,10 +74,18 @@ fn main (){
             rack_id += 1;
         }
     }
+    println!("Racks: {:?}", racks);
 
-
-    let crushmap = generate_crushmap(racks);
-    println!("Racks: {:?}", crushmap);
+    let crush_result = match generate_crushmap(racks) {
+        Ok(_) => { juju::status_set(juju::Status{ status_type: juju::StatusType::Maintenance,
+                                    message: "Crushmap generated in \"/usr\". Please examine crushmap with Ceph before use."
+                                        .to_string()});
+                },
+        Err(e) => { let message = format!("Failed to create crushmap with error: {}", e);
+                    juju::status_set(juju::Status{ status_type: juju::StatusType::Maintenance,
+                     message: message});
+                }
+    };
 
 }
 
@@ -89,33 +101,43 @@ fn parse_unit_into_relation(unit: String) -> juju::Relation {
     parsed_unit
 }
 
-fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::CrushMap {
+fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> Result<(), String> {
 
-    let some_crushmap_file = File::open("").unwrap();
-    let mut crushmap_bytes: Vec<u8> = vec![];
+    Command::new("ceph")
+                .current_dir("/usr")
+                .args(&["osd", "getcrushmap", "-o", "dctmap.txt"])
+                .spawn()
+                .expect("failed to grab current cruhsmap");
+
+
+    let path = Path::new("/usr/dctmap.txt");
+    let some_crushmap_file = File::open(path).unwrap();
+    let mut crushmap_bytes: Vec<u8> = Vec::new();
     for byte in some_crushmap_file.bytes() {
         crushmap_bytes.push(byte.unwrap());
     }
+    let current_map: crushtool::CrushMap = try!(crushtool::decode_crushmap(&crushmap_bytes[..]));
 
-    let current_map: crushtool::CrushMap = crushtool::decode_crushmap(&crushmap_bytes[..]).unwrap();
+    let mut current_index: i32 = match current_map.name_map.iter().min() {
+        Some(&(index, _)) => index,
+        None => {
+            return Err("Cannot proceed due to error: Could not find current index.
+                    Either no bucket items are present or map decode failed to generate meaningful
+                    buckets.". to_string());
+        }
+    };
 
-    let mut current_index: i32 = 0;
     let mut name_map: HashMap<String, i32> = HashMap::new();
     let mut machines_map: HashMap<String, i32> = HashMap::new();
     let mut machines: HashSet<String> = HashSet::new();
     let mut current_buckets = current_map.buckets.clone();
 
     for (index, name) in current_map.name_map {
-        if index < current_index {
-            current_index = index;
-        }
         name_map.insert(name, index);
-    }
+    };
 
     for (_, members) in racks.clone() {
-        for machine in members {
-            machines.insert(machine);
-        }
+        machines.extend(members);
     }
 
     for (id, index) in name_map.clone() {
@@ -153,11 +175,11 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
         }
     }
 
-    let mut new_rack_buckets: Vec<(i32, Option<String>)> = vec![];
+    let mut new_rack_buckets: Vec<(i32, Option<String>)> = Vec::new();
 
     for (id, members) in racks {
         let name = id.to_string();
-        let mut bucket_items: Vec<(i32, Option<String>)> = vec![];
+        let mut bucket_items: Vec<(i32, Option<String>)> = Vec::new();
 
         for machine in members.clone() {
             let index = machines_map.get(&machine);
@@ -166,11 +188,10 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
 
         let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
             bucket: crushtool::Bucket {
-                struct_size: 4,
                 id: current_index,
                 bucket_type: crushtool::OpCode::Take,
                 alg: crushtool::BucketAlg::Straw,
-                hash: 0,
+                hash: crushtool::CrushHash::RJenkins1,
                 weight: 0,
                 size: members.len() as u32,
                 items: bucket_items,
@@ -188,11 +209,10 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
 
     let new_default_bucket = crushtool::BucketTypes::Straw(crushtool:: CrushBucketStraw {
         bucket: crushtool::Bucket {
-            struct_size: 4,
             id: -1,
             bucket_type: crushtool::OpCode::SetChooseLocalTries,
             alg: crushtool::BucketAlg::Straw,
-            hash: 0,
+            hash: crushtool::CrushHash::RJenkins1,
             weight: 0,
             size: new_rack_buckets.len() as u32,
             items: new_rack_buckets.clone(),
@@ -203,7 +223,7 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
     });
 
     current_buckets.push(new_default_bucket);
-    let mut final_name_map: Vec<(i32, String)> = vec![];
+    let mut final_name_map: Vec<(i32, String)> = Vec::new();
 
     for (name, index) in name_map.clone() {
         final_name_map.push((index, name));
@@ -263,7 +283,12 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> crushtool::Crush
         choose_tries: None,
     };
 
-    new_crushmap
+    let encoded_crushmap = crushtool::encode_crushmap(new_crushmap).unwrap();
+    let mut finished_map = try!(File::create("/usr/dctmap_output.txt").map_err(|e| e.to_string()));
+
+    try!(finished_map.write_all(&encoded_crushmap[..]).map_err(|e| e.to_string()));
+
+    Ok(())
 
 }
 

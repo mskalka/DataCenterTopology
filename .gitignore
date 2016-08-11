@@ -7,12 +7,7 @@
 .idea
 
 
-charm-dct-controller/trusty
-charm-dct-node/trusty
-create-crushmap/target
-begin-dscovery/target
-discover-neighbors/target
-controller-relation-joined/target
-controller-relation-changed/target
+trusty
+target
 
 show-data

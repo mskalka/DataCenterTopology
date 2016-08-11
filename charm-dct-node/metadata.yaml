@@ -6,7 +6,8 @@ description: |
 tags:
   - misc
 
-subordinate: false
+subordinate: true
+
 
 requires:
   controller:
@@ -15,6 +16,9 @@ requires:
       interface: related-units
   ready:
     interface: ready
+  ceph-nodes:
+    interface: ceph-nodes
+    scope: container
 
 provides:
   unitid:
