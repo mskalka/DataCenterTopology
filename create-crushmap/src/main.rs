@@ -19,13 +19,24 @@ creates the crushmap from those clusters.
 
 fn main (){
 
-    let juju_relation_ids = juju::relation_ids_by_identifier("controller").unwrap();
+    let juju_relation_ids = match juju::relation_ids_by_identifier("controller") {
+        Ok(ids) => ids,
+        Err(_) => {panic!("Failed at grabbing relation IDs.")}
+    };
     let relation_id = &juju_relation_ids[0];
-    let controller_id = env::var("JUJU_UNIT_NAME").unwrap_or("".to_string());
+    let controller_id = match env::var("JUJU_UNIT_NAME") {
+        Ok(id) => id,
+        Err(_) => {panic!("Failed to grab controller id from JUJU.");}
+
+    };
 
     let controller = parse_unit_into_relation(controller_id);
 
-    let juju_related_units = juju::relation_get_by_id("related-units", &relation_id, &controller).unwrap();
+    let juju_related_units = match juju::relation_get_by_id("related-units", &relation_id, &controller) {
+        Ok(units) => units,
+        Err(_) => {panic!("Failed to grab related units from juju relation.");}
+
+    };
     let mut juju_parsed_units: Vec<juju::Relation> = vec![];
 
     for unit in juju_related_units.split_whitespace() {
@@ -35,8 +46,16 @@ fn main (){
     let mut machines: HashMap<String, Vec<String>> = HashMap::new();
 
     for unit in juju_parsed_units {
-        let hostname = juju::relation_get_by_id("hostname", &relation_id, &unit).unwrap();
-        let neighbors_raw = juju::relation_get_by_id("neighbors", &relation_id, &unit).unwrap();
+        let hostname = match juju::relation_get_by_id("hostname", &relation_id, &unit) {
+            Ok(h) => h,
+            Err(_) => { panic!("Failed to grab hostname from {:?}.", unit); }
+
+        };
+        let neighbors_raw = match juju::relation_get_by_id("neighbors", &relation_id, &unit) {
+            Ok(n) => n,
+            Err(_) => { panic!("Failed to grab neighbors from {:?}.", unit); }
+
+        };
         let hostname_trimmed = hostname.trim_matches('\n').trim();
         let neighbors_trimmed = neighbors_raw.trim_matches('\n').trim();
 
@@ -78,7 +97,7 @@ fn main (){
 
     let crush_result = match generate_crushmap(racks) {
         Ok(_) => { juju::status_set(juju::Status{ status_type: juju::StatusType::Maintenance,
-                                    message: "Crushmap generated in \"/usr\". Please examine crushmap with Ceph before use."
+                                    message: "Crushmap generated in ~/. Please examine crushmap with Ceph before use."
                                         .to_string()});
                 },
         Err(e) => { let message = format!("Failed to create crushmap with error: {}", e);
@@ -93,7 +112,12 @@ fn main (){
 
 fn parse_unit_into_relation(unit: String) -> juju::Relation {
     let v: Vec<&str> = unit.split('/').collect();
-    let id: usize = v[1].parse::<usize>().unwrap();
+    let id: usize = match v[1].parse::<usize>() {
+        Ok(i) => i,
+        Err(_) => {panic!("Could not parse {} into relation.", unit) }
+
+    };
+
     let parsed_unit = juju::Relation {
         name: v[0].to_string(),
         id: id,
@@ -104,14 +128,14 @@ fn parse_unit_into_relation(unit: String) -> juju::Relation {
 fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> Result<(), String> {
 
     Command::new("ceph")
-                .current_dir("/usr")
-                .args(&["osd", "getcrushmap", "-o", "dctmap.txt"])
+                .current_dir("/tmp")
+                .args(&["osd", "getcrushmap", "-o", "/tmp/currentmap"])
                 .spawn()
                 .expect("failed to grab current cruhsmap");
 
 
-    let path = Path::new("/usr/dctmap.txt");
-    let some_crushmap_file = File::open(path).unwrap();
+    let path = Path::new("/tmp/currentmap");
+    let some_crushmap_file = try!(File::open(path).map_err(|e| e.to_string()));
     let mut crushmap_bytes: Vec<u8> = Vec::new();
     for byte in some_crushmap_file.bytes() {
         crushmap_bytes.push(byte.unwrap());
@@ -182,8 +206,12 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> Result<(), Strin
         let mut bucket_items: Vec<(i32, Option<String>)> = Vec::new();
 
         for machine in members.clone() {
-            let index = machines_map.get(&machine);
-            bucket_items.push((*index.unwrap(), Some(machine.to_string())));
+            let index: i32 = match machines_map.get(&machine) {
+                Some(index) => *index,
+                None => {return Err("Could not get machines from members.".to_string())}
+
+            };
+            bucket_items.push((index, Some(machine.to_string())));
         }
 
         let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
@@ -283,8 +311,8 @@ fn generate_crushmap(racks: HashMap<usize, HashSet<String>>) -> Result<(), Strin
         choose_tries: None,
     };
 
-    let encoded_crushmap = crushtool::encode_crushmap(new_crushmap).unwrap();
-    let mut finished_map = try!(File::create("/usr/dctmap_output.txt").map_err(|e| e.to_string()));
+    let encoded_crushmap = try!(crushtool::encode_crushmap(new_crushmap).map_err(|e| e.to_string()));
+    let mut finished_map = try!(File::create("~/dct_crushmap.txt").map_err(|e| e.to_string()));
 
     try!(finished_map.write_all(&encoded_crushmap[..]).map_err(|e| e.to_string()));
 

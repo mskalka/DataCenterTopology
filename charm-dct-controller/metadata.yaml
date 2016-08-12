@@ -10,15 +10,3 @@ tags:
 provides:
   controller:
     interface: controller
-  related-units:
-    interface: related-units
-  ready:
-    interface: ready
-
-requires:
-  unitid:
-    interface: unitid
-  hostname:
-    interface: hostname
-  neighbors:
-    interface: neighbors
