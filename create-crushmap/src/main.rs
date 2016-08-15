@@ -1,6 +1,5 @@
 extern crate crushtool;
-#[macro_use]
-extern crate log;
+
 extern crate juju;
 
 use std::collections::{HashMap, HashSet};
@@ -9,14 +8,22 @@ use std::env;
 use std::io::prelude::*;
 use std::fs::File;
 use std::path::Path;
-use std::process::Command;
 
 /*
 Here is where the controller takes input from the subordinate services,
 determines which nodes are in the same rack, and finally
 creates the crushmap from those clusters.
 
+
+Pull full bucket list
+
+
+
+
 */
+
+
+
 
 fn main (){
 
@@ -130,13 +137,7 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
     */
 
     // Grab current map
-    Command::new("ceph")
-                .current_dir("/tmp")
-                .args(&["osd", "getcrushmap", "-o", "/tmp/currentmap"])
-                .spawn()
-                .expect("failed to grab current cruhsmap");
 
-    println!("Grabbed current crushmap.");
 
     //Open that map and read the bytes to a var, then decode those bytes to a crushmap object
     let path = Path::new("/tmp/currentmap");
@@ -182,54 +183,65 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
 
 
     let mut machines_map: HashMap<String, i32> = HashMap::new();
+    let mut machine_ids: Vec<i32> = Vec::new();
     for (id, index) in name_map.clone() {
         if machines.contains(&id){
             machines_map.insert(id.clone(), index.clone());
+            machine_ids.push(index);
         }
     }
     println!("machines_map: {:?}", machines_map);
 
     //Matching the name map items to buckets and pulling those buckets into a list.
-    //We are only concerned with hosts and OSDs here, because any other buckets besides the root will
+    //We are only concerned with hosts and OSDs here, because all other buckets will
     //be thrown out when we make the new map
-    let mut host_bucket_list: HashMap<String, crushtool::BucketTypes> = HashMap::new();
 
-    for (name, index) in &name_map {
-        for bucket in current_map.buckets.clone() {
-            let id: i32;
-            match bucket {
-                crushtool::BucketTypes::Uniform(ref uniform) => {
-                    id = uniform.bucket.id;
-                }
-                crushtool::BucketTypes::List(ref list) => {
-                    id = list.bucket.id;
-                }
-                crushtool::BucketTypes::Tree(ref tree) => {
-                    id = tree.bucket.id;
-                }
-                crushtool::BucketTypes::Straw(ref straw) => {
-                    id = straw.bucket.id;
-                }
-                crushtool::BucketTypes::Unknown => {
-                    id = 65536;
-                }
+
+    let mut old_buckets: HashMap<i32, crushtool::BucketTypes> = HashMap::new();
+    let mut carryover_buckets: HashSet<crushtool::BucketTypes> = HashSet::new();
+    let mut new_rack_buckets: Vec<crushtool::BucketTypes> = Vec::new();
+
+    for bucket in current_map.buckets.clone() {
+        let id: i32;
+        match bucket {
+            crushtool::BucketTypes::Uniform(ref uniform) => {
+                id = uniform.bucket.id;
             }
-            if &id == index {
-                host_bucket_list.insert(name.clone(), bucket.clone());
+            crushtool::BucketTypes::List(ref list) => {
+                id = list.bucket.id;
             }
+            crushtool::BucketTypes::Tree(ref tree) => {
+                id = tree.bucket.id;
+            }
+            crushtool::BucketTypes::Straw(ref straw) => {
+                id = straw.bucket.id;
+            }
+            crushtool::BucketTypes::Unknown => {
+                id = 65536;
+            }
+        };
+        old_buckets.insert(id.clone(), bucket.clone());
+        //Grab OSDs since they're always keyed with positive IDs
+        if id >= 0 {
+            carryover_buckets.insert(bucket.clone());
+        //Grab buckets that match up to our known machine list
+        } else if machine_ids.contains(&id) {
+            carryover_buckets.insert(bucket.clone());
         }
+
     }
+
     //This holds the current buckets pulled from Ceph. Machines and OSDs already have an index assigned
     //by Ceph, and instead of making a new bucket for each item, we simply make a new rack bucket using the
     //current buckets' indexes. Since the machine is the "top" bucket for each OSD, we grab that index, keeping
     //the tree below untouched.
-    let mut current_buckets = current_map.buckets.clone();
-    let mut new_rack_buckets: Vec<(i32, Option<String>)> = Vec::new();
-    let mut bucket_name: usize = 0;
+
+
+    let mut new_rack_items: Vec<(i32, Option<String>)> = Vec::new();
+    let mut bucket_name: i32 = 0;
     //For each group of machines in our racks var we make a bucket
     for members in racks {
 
-        let name = bucket_name.to_string();
         let mut bucket_items: Vec<(i32, Option<String>)> = Vec::new();
 
         //For each machine in the machines map we grab the bucket items from out machines map.
@@ -244,7 +256,7 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
             //we only push that index into our bucket items list, along with the corresponding machine name
             bucket_items.push((index, Some(machine.to_string())));
         }
-        //Make a new bucket, put the items matched above into it, then push it to our current buckets
+        //Make a new bucket, put the items matched above into it, then push it to our rack buckets
         let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
             bucket: crushtool::Bucket {
                 id: current_index,
@@ -260,9 +272,9 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
             item_weights: vec![(0, 0), (0, 0), (0, 0)]
 
         });
-        new_rack_buckets.push((current_index, Some(name.to_string())));
-        current_buckets.push(bucket);
-        final_name_map.push((current_index, name));
+        new_rack_items.push((current_index, Some(bucket_name.to_string())));
+        new_rack_buckets.push(bucket);
+        final_name_map.push((current_index, bucket_name.to_string()));
         current_index += -1;
         bucket_name += 1;
     }
@@ -275,7 +287,7 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
             hash: crushtool::CrushHash::RJenkins1,
             weight: 0,
             size: new_rack_buckets.len() as u32,
-            items: new_rack_buckets.clone(),
+            items: new_rack_items.clone(),
             perm_n: 0,
             perm: new_rack_buckets.len() as u32,
         },
@@ -283,15 +295,20 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
     });
     println!("Final name map:{:?}", final_name_map);
 
-    //Push the default bucket into our current buckets list
-    current_buckets.push(new_default_bucket);
+    let mut final_buckets: Vec<crushtool::BucketTypes> = Vec::new();
+    final_buckets.extend(carryover_buckets);
+    final_buckets.extend(new_rack_buckets);
+    final_buckets.push(new_default_bucket);
+    let unknowns = vec![crushtool::BucketTypes::Unknown, crushtool::BucketTypes::Unknown,
+                        crushtool::BucketTypes::Unknown, crushtool::BucketTypes::Unknown];
+    final_buckets.extend(unknowns);
 
     let new_crushmap: crushtool::CrushMap = crushtool::CrushMap {
         magic: 65536,
-        max_buckets: 8,
+        max_buckets: final_buckets.len() as i32 + 4,
         max_rules: 1,
-        max_devices: 3,
-        buckets: current_buckets,
+        max_devices: machines_map.len() as i32,
+        buckets: final_buckets,
         rules: vec![Some(crushtool::Rule {
             len: 3,
             mask: crushtool::CrushRuleMask {

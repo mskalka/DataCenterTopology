@@ -1,5 +1,8 @@
 extern crate juju;
 
+use std::process::Command;
+
+
 fn main () {
 
     let juju_relation_ids = juju::relation_ids_by_identifier("controller").unwrap();
@@ -9,5 +12,13 @@ fn main () {
 
     let message: juju::Status = juju::Status {status_type: juju::StatusType::Waiting, message: "Network discovery initiated".to_owned()};
     juju::status_set(message);
+
+    Command::new("ceph")
+        .current_dir("/tmp")
+        .args(&["osd", "getcrushmap", "-o", "/tmp/currentmap"])
+        .spawn()
+        .expect("failed to grab current cruhsmap");
+
+    println!("Grabbed current crushmap.");
 
 }

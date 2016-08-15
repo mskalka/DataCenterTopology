@@ -15,3 +15,6 @@ requires:
   ceph-client:
     interface: ceph-client
     scope: container
+  mon:
+    interface: ceph-osd
+    scope: container
