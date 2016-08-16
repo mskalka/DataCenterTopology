@@ -216,6 +216,10 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
             crushtool::BucketTypes::Straw(ref straw) => {
                 id = straw.bucket.id;
             }
+            crushtool::BucketTypes::Straw2(ref straw2) => {
+                id = straw2.bucket.id;
+            }
+
             crushtool::BucketTypes::Unknown => {
                 id = 65536;
             }
@@ -249,12 +253,13 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
         for machine in members.clone() {
             let index: i32 = match machines_map.get(&machine) {
                 Some(index) => *index,
-                None => {return Err("Could not match bucket items to machines".to_string())}
+                None => {return Err("Could not match bucket items to machine index".to_string())}
 
             };
             //Again, since we're only concerned with the index of the machine (the root of our machine/osd tree)
             //we only push that index into our bucket items list, along with the corresponding machine name
             bucket_items.push((index, Some(machine.to_string())));
+
         }
         //Make a new bucket, put the items matched above into it, then push it to our rack buckets
         let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
@@ -272,9 +277,9 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
             item_weights: vec![(0, 0), (0, 0), (0, 0)]
 
         });
+        final_name_map.push((current_index, bucket_name.to_string()));
         new_rack_items.push((current_index, Some(bucket_name.to_string())));
         new_rack_buckets.push(bucket);
-        final_name_map.push((current_index, bucket_name.to_string()));
         current_index += -1;
         bucket_name += 1;
     }
@@ -303,15 +308,14 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
                         crushtool::BucketTypes::Unknown, crushtool::BucketTypes::Unknown];
     final_buckets.extend(unknowns);
 
-    let new_crushmap: crushtool::CrushMap = crushtool::CrushMap {
+    let mut new_crushmap: crushtool::CrushMap = crushtool::CrushMap {
         magic: 65536,
-        max_buckets: final_buckets.len() as i32 + 4,
+        max_buckets: final_buckets.len() as i32,
         max_rules: 1,
         max_devices: machines_map.len() as i32,
         buckets: final_buckets,
         rules: vec![Some(crushtool::Rule {
-            len: 3,
-            mask: crushtool::CrushRuleMask {
+                mask: crushtool::CrushRuleMask {
                 ruleset: 0,
                 rule_type: crushtool::RuleType::Replicated,
                 min_size: 1,
@@ -353,9 +357,11 @@ fn generate_crushmap(racks: HashSet<BTreeSet<String>>) -> Result<(), String> {
         chooseleaf_descend_once: Some(1),
         chooseleaf_vary_r: Some(0),
         straw_calc_version: Some(1),
-        choose_tries: None,
+        allowed_bucket_algorithms: Some(0),
+        chooseleaf_stable: Some(0)
     };
     println!("New Crushmap: {:?}", new_crushmap);
+    crushtool::set_tunables_jewel(&mut new_crushmap);
     let encoded_crushmap = try!(crushtool::encode_crushmap(new_crushmap).map_err(|e| e.to_string()));
     let mut finished_map = try!(File::create("/tmp/dct_crushmap").map_err(|e| e.to_string()));
 
