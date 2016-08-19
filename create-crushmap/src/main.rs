@@ -76,7 +76,7 @@ fn main (){
         members.dedup();
         potential_racks.push(members);
     }
-    potential_racks.sort_by(|a , b| a.len().cmp(&b.len()));
+    potential_racks.sort_by(|a , b| b.len().cmp(&a.len()));
     potential_racks.dedup();
 
     println!("Potential racks: {:?}", potential_racks);
@@ -95,7 +95,6 @@ fn main (){
                 println!("Machine found in list: {:?}", racked_machines);
                 continue 'rack;
             }
-
         }
         racks.insert(rack.clone());
         racked_machines.extend(rack.clone());
@@ -258,17 +257,13 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
             let index: i32 = match machines_map.get(&machine) {
                 Some(index) => *index,
                 None => {return Err("Could not match bucket items to machine index".to_string())}
-
             };
             //Again, since we're only concerned with the index of the machine (the root of our machine/osd tree)
             //we only push that index into our bucket items list, along with the corresponding machine name
             bucket_items.push((index, Some(machine.to_string())));
-
-
-
         }
-        //Make a new bucket, put the items matched above into it, then push it to our rack buckets
 
+        //Make a new bucket, put the items matched above into it, then push it to our rack buckets
         let bucket = crushtool::BucketTypes::Straw(crushtool::CrushBucketStraw {
             bucket: crushtool::Bucket {
                 id: current_index,
@@ -306,6 +301,7 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
         item_weights: vec![(0, 0); new_rack_items.len()]
     });
     final_name_map.push((-1, "default".to_string()));
+    final_name_map.sort();
     println!("Final name map:{:?}", final_name_map);
 
     let mut final_buckets: Vec<crushtool::BucketTypes> = Vec::new();
