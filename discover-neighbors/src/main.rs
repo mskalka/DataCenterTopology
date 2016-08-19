@@ -29,7 +29,7 @@ fn main () {
     println!("Ready status: {}", ready_status);
     if (ready_status == "1") && (finished_status != "1") {
         println!("Starting network discovery");
-        results = network_discovery().trim_matches('\n').trim().to_string();
+        results = network_discovery(unit.name.clone()).trim_matches('\n').trim().to_string();
         println!("Results: {}", results);
 
         juju::relation_set("neighbors", &results);
@@ -57,7 +57,7 @@ fn main () {
 
 }
 
-fn network_discovery() -> String{
+fn network_discovery(unit: String) -> String{
 
     let juju_unit_list: String = juju::relation_get("related-units").unwrap();
     println!("Unit list: {}", juju_unit_list);
@@ -74,6 +74,7 @@ fn network_discovery() -> String{
         let ip = ip.trim();
         juju_machine_ids_with_ip.insert(hostname, Ipv4Addr::from_str(&ip).unwrap());
     }
+    juju_machine_ids_with_ip.remove(&unit);
     println!("Known IPs: {:?}", juju_machine_ids_with_ip);
 
     //Get list of neighbor IPs using arping
