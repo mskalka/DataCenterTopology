@@ -101,9 +101,6 @@ fn main (){
         racked_machines.extend(rack.clone());
     }
 
-
-
-    racks.extend(potential_racks);
     println!("Racks: {:?}", racks);
 
     let crush_result = match generate_crushmap(racks) {
