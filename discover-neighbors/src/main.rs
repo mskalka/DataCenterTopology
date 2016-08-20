@@ -13,13 +13,14 @@ use std::thread::sleep;
 mod networking;
 
 
-fn main () {
+fn main() {
     let unit_id = env::var("JUJU_UNIT_NAME").unwrap_or("".to_string());
     let unit = parse_unit_into_relation(unit_id);
 
     let ready_status: String = juju::relation_get("ready").unwrap().to_string();
     let ready_status = ready_status.trim_matches('\n').trim();
-    let finished_status: String = juju::relation_get_by_unit("finished", &unit).unwrap().to_string();
+    let finished_status: String =
+        juju::relation_get_by_unit("finished", &unit).unwrap().to_string();
     let finished_status = finished_status.trim_matches('\n').trim();
     let results: String;
 
@@ -40,15 +41,17 @@ fn main () {
             let test_set = juju::relation_get_by_unit("neighbors", &unit).unwrap();
             let test_set = test_set.trim_matches('\n').trim();
             if test_set == results {
-                juju::status_set(juju::Status{status_type: juju::StatusType::Waiting,
-                                            message: "Finished network discovery".to_string()});
+                juju::status_set(juju::Status {
+                    status_type: juju::StatusType::Waiting,
+                    message: "Finished network discovery".to_string(),
+                });
                 juju::relation_set("finished", "1");
                 finished = true;
 
             } else {
                 juju::relation_set("neighbors", &results);
                 count += 1;
-                sleep(Duration::new(5,0));
+                sleep(Duration::new(5, 0));
             }
         }
     }
@@ -57,7 +60,7 @@ fn main () {
 
 }
 
-fn network_discovery(unit: String) -> String{
+fn network_discovery(unit: String) -> String {
 
     let juju_unit_list: String = juju::relation_get("related-units").unwrap();
     println!("Unit list: {}", juju_unit_list);
@@ -77,16 +80,17 @@ fn network_discovery(unit: String) -> String{
     juju_machine_ids_with_ip.remove(&unit);
     println!("Known IPs: {:?}", juju_machine_ids_with_ip);
 
-    //Get list of neighbor IPs using arping
+    // Get list of neighbor IPs using arping
     let neighbor_list = networking::send_and_receive(juju_machine_ids_with_ip);
     let mut neighbors_formatted: String = "".to_string();
 
     for (machine, ip) in neighbor_list {
         let trimmed_machine = &machine.trim_matches('\n').trim();
-        neighbors_formatted = format!("{} {}", &neighbors_formatted.trim_matches('\n')
-                                                    .trim()
-                                                    .to_string(),
-                                                    &trimmed_machine);
+        neighbors_formatted = format!("{} {}",
+                                      &neighbors_formatted.trim_matches('\n')
+                                          .trim()
+                                          .to_string(),
+                                      &trimmed_machine);
     }
 
 
