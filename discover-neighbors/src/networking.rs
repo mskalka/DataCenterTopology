@@ -13,7 +13,7 @@ use std::time::{Instant, Duration};
 use std::collections::HashMap;
 
 
-pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) ->  HashMap<String, Ipv4Addr> {
+pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) -> HashMap<String, Ipv4Addr> {
 
     let mut nodes: Vec<Ipv4Addr> = vec![];
     let (transmit_channel, receiver_channel) = channel();
@@ -25,31 +25,31 @@ pub fn send_and_receive(juju_machine_list: HashMap<String, Ipv4Addr>) ->  HashMa
         let interface2 = interface.clone();
         let unitips = juju_machine_list.clone();
 
-        thread::spawn(move|| {
+        thread::spawn(move || {
             recieve_packets(interface, transmit_channel);
         });
-        thread::spawn(move|| {
+        thread::spawn(move || {
             send_packets(interface2, unitips);
         });
     }
 
     // Ten second timeout on receiver
     let mut now = Instant::now();
-    while now.elapsed() <= Duration::new(10,0) {
-        match receiver_channel.try_recv(){
+    while now.elapsed() <= Duration::new(10, 0) {
+        match receiver_channel.try_recv() {
             Ok(item) => {
                 nodes.push(item);
                 now = Instant::now()
-            },
+            }
             Err(e) => {
-                //TODO: Add something here?
+                // TODO: Add something here?
             }
         }
     }
     let mut neighbors: HashMap<String, Ipv4Addr> = HashMap::new();
 
     for (machine, ip) in juju_machine_list {
-        if nodes.contains(&ip){
+        if nodes.contains(&ip) {
             neighbors.insert(machine, ip);
         }
     }
@@ -64,12 +64,15 @@ pub fn send_packets(interface: NetworkInterface, juju_machines: HashMap<String, 
     let (mut tx, _) = match datalink::channel(&interface, &Default::default()) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!("An error occurred when creating the datalink channel: {}", e)
+        Err(e) => {
+            panic!("An error occurred when creating the datalink channel: {}",
+                   e)
+        }
     };
 
     // Store blank IPs so the compiler stops throwing errors
-    let mut senderipv4 = Ipv4Addr::new(0,0,0,0);
-    let mut _senderipv6 = Ipv6Addr::new(0,0,0,0,0,0,0,0);
+    let mut senderipv4 = Ipv4Addr::new(0, 0, 0, 0);
+    let mut _senderipv6 = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0);
 
     let senderhw: MacAddr = interface.mac.unwrap();
     // Create buffer for ARP packets: 60 bytes
@@ -83,13 +86,15 @@ pub fn send_packets(interface: NetworkInterface, juju_machines: HashMap<String, 
 
     // Match the IP address type out of the std::net::IpAddr enum
     match interface.ips {
-        Some(ref ips) => for ipaddr in ips {
-            match ipaddr {
-                &IpAddr::V4(ip) => senderipv4 = ip,
-                &IpAddr::V6(ip) => _senderipv6 = ip
+        Some(ref ips) => {
+            for ipaddr in ips {
+                match ipaddr {
+                    &IpAddr::V4(ip) => senderipv4 = ip,
+                    &IpAddr::V6(ip) => _senderipv6 = ip,
+                }
             }
-        },
-        None => println!("Didn't find any IPs on interface: {}", interface.name)
+        }
+        None => println!("Didn't find any IPs on interface: {}", interface.name),
     }
 
     // Create the ARP packet inside the ethernet wrapper
@@ -106,14 +111,16 @@ pub fn send_packets(interface: NetworkInterface, juju_machines: HashMap<String, 
         arppacket.set_proto_addr_len(4);
     }
 
-    //let senderoctets = senderipv4.octets();
+    // let senderoctets = senderipv4.octets();
 
     // Iterate over each address in the last octet of the sender's IP to ping each of its
     // neighbors with an ARP request.
     // TODO: Find a way to ping entire subnet, not just last octet
     for targetip in juju_machines.values() {
         {
-            MutableArpPacket::new(ethernetwrapper.payload_mut()).unwrap().set_target_proto_addr(*targetip);
+            MutableArpPacket::new(ethernetwrapper.payload_mut())
+                .unwrap()
+                .set_target_proto_addr(*targetip);
         }
         // Change the MutableEthernetPacket to an EthernetPacket
         let packet = ethernetwrapper.to_immutable();
@@ -129,7 +136,10 @@ pub fn recieve_packets(interface: NetworkInterface, tx: Sender<Ipv4Addr>) {
     let (_, mut rx) = match datalink::channel(&interface, &Default::default()) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!("An error occurred when creating the datalink channel: {}", e)
+        Err(e) => {
+            panic!("An error occurred when creating the datalink channel: {}",
+                   e)
+        }
     };
 
     let mut nodes: Vec<Ipv4Addr> = Vec::new();
@@ -152,11 +162,9 @@ pub fn recieve_packets(interface: NetworkInterface, tx: Sender<Ipv4Addr>) {
                         now = Instant::now();
                     }
                 }
-            },
-
-            Err(e) => {
-                panic!("An error occurred while reading:{}", e)
             }
+
+            Err(e) => panic!("An error occurred while reading:{}", e),
         }
     }
 }

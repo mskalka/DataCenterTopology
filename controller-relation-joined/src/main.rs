@@ -17,7 +17,10 @@ fn main() {
     if units.len() == configured_num_units {
 
         juju::relation_set("related-units", &unit_list);
-        let message: juju::Status = juju::Status {status_type: juju::StatusType::Waiting, message: "Ready to begin network discovery".to_owned()};
+        let message: juju::Status = juju::Status {
+            status_type: juju::StatusType::Waiting,
+            message: "Ready to begin network discovery".to_owned(),
+        };
         juju::status_set(message);
 
     }
