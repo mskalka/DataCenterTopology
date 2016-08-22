@@ -1,7 +1,8 @@
 extern crate crushtool;
-
 extern crate juju;
+extern crate log;
 
+use log::LogLevel;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::prelude::*;
@@ -13,16 +14,48 @@ use std::path::Path;
 // creates the crushmap from those clusters.
 //
 
+
 fn main() {
 
+    let machines = grab_relation_data();
+    let racks = generate_racks(machines);
+
+    let crush_result = match generate_crushmap(racks) {
+        Ok(_) => {
+            juju::status_set(juju::Status {
+                status_type: juju::StatusType::Maintenance,
+                message: "Crushmap generated in /tmp. Please examine crushmap with Ceph before \
+                          use."
+                    .to_string(),
+            });
+        }
+        Err(e) => {
+            let message = format!("Failed to create crushmap with error: {}", e);
+            juju::log(message.clone(), Some(LogLevel::Error));
+            juju::status_set(juju::Status {
+                status_type: juju::StatusType::Maintenance,
+                message: message,
+            });
+        }
+    };
+    juju::log(format!("{:?}", crush_result), Some(LogLevel::Info));
+    println!("{:?}", crush_result);
+
+}
+
+fn grab_relation_data() -> HashMap<String, Vec<String>> {
     let juju_relation_ids = match juju::relation_ids_by_identifier("controller") {
         Ok(ids) => ids,
-        Err(_) => panic!("Failed at grabbing relation IDs."),
+        Err(_) => {
+            juju::log("Failed at grabbing relation IDs.", Some(LogLevel::Error));
+            panic!("Failed at grabbing relation IDs.");
+        }
     };
     let relation_id = &juju_relation_ids[0];
     let controller_id = match env::var("JUJU_UNIT_NAME") {
         Ok(id) => id,
         Err(_) => {
+            juju::log("Failed to grab controller id from JUJU.", Some(LogLevel::Error));
             panic!("Failed to grab controller id from JUJU.");
         }
 
@@ -31,13 +64,15 @@ fn main() {
     let controller = parse_unit_into_relation(controller_id);
 
     let juju_related_units =
-        match juju::relation_get_by_id("related-units", &relation_id, &controller) {
-            Ok(units) => units,
-            Err(_) => {
-                panic!("Failed to grab related units from juju relation.");
-            }
+    match juju::relation_get_by_id("related-units", &relation_id, &controller) {
+        Ok(units) => units,
+        Err(_) => {
+            juju::log("Failed to grab related units from juju relation.", Some(LogLevel::Error));
+            panic!("Failed to grab related units from juju relation.");
+        }
 
-        };
+    };
+
     let mut juju_parsed_units: Vec<juju::Relation> = Vec::new();
 
     for unit in juju_related_units.split_whitespace() {
@@ -50,6 +85,7 @@ fn main() {
         let hostname = match juju::relation_get_by_id("hostname", &relation_id, &unit) {
             Ok(h) => h,
             Err(_) => {
+                juju::log(format!("Failed to grab hostname from {:?}.", unit), Some(LogLevel::Error));
                 panic!("Failed to grab hostname from {:?}.", unit);
             }
 
@@ -57,6 +93,7 @@ fn main() {
         let neighbors_raw = match juju::relation_get_by_id("neighbors", &relation_id, &unit) {
             Ok(n) => n,
             Err(_) => {
+                juju::log(format!("Failed to grab neighbors from {:?}.", unit), Some(LogLevel::Error));
                 panic!("Failed to grab neighbors from {:?}.", unit);
             }
 
@@ -73,6 +110,11 @@ fn main() {
                  neighbors_trimmed);
         machines.insert(hostname_trimmed.to_owned(), neighbors);
     }
+
+    machines
+}
+
+fn generate_racks(machines: HashMap<String, Vec<String>>) -> HashSet<Vec<String>>{
 
     let mut racks: HashSet<Vec<String>> = HashSet::new();
     let mut racked_machines: HashSet<String> = HashSet::new();
@@ -112,65 +154,26 @@ fn main() {
 
     println!("Racks: {:?}", racks);
 
-    let crush_result = match generate_crushmap(racks) {
-        Ok(_) => {
-            juju::status_set(juju::Status {
-                status_type: juju::StatusType::Maintenance,
-                message: "Crushmap generated in /tmp. Please examine crushmap with Ceph before \
-                          use."
-                    .to_string(),
-            });
-        }
-        Err(e) => {
-            let message = format!("Failed to create crushmap with error: {}", e);
-            juju::status_set(juju::Status {
-                status_type: juju::StatusType::Maintenance,
-                message: message,
-            });
-        }
-    };
-    println!("{:?}", crush_result);
-
-}
-
-
-// Parses unit strings from Juju into relations that Crushtool can understand
-fn parse_unit_into_relation(unit: String) -> juju::Relation {
-    let v: Vec<&str> = unit.split('/').collect();
-    let id: usize = match v[1].parse::<usize>() {
-        Ok(i) => i,
-        Err(_) => panic!("Could not parse {} into relation.", unit),
-
-    };
-
-    let parsed_unit = juju::Relation {
-        name: v[0].to_string(),
-        id: id,
-    };
-    parsed_unit
+    racks
 }
 
 fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
     // This generates a crushmap using the information gathered during network discovery.
     //
-    // First it generates the current crushmap using Ceph's built-in tools. Then it picks apart
-    // that map to get the name_map, buckets, and current index. From there we take our list of
-    // racks, take each item in the rack
-    // and match it up to an item in the name map for further use. We take those racks again
-    // and create a bucket for each one
-    // which holds the machine and the associated OSD. Finally put those buckets back into a
-    // crushmap and encode it with
-    // Crushtool, and write the bytes to a file that Ceph can use.
-    //
+    // First it loads the current crushmap generated in the begin-discovery action.
+    // Then it picks apart that map to get the name_map, buckets, and current index. From there we
+    // take our list of racks, take each item in the rack and match it up to an item in the name
+    // map for further use. We take those racks again and create a bucket for each one which holds
+    // the machine and the associated OSD. Finally put those buckets back into a crushmap and
+    // encode it with Crushtool, and write the bytes to a file that Ceph can use.
 
 
     // Open that map and read the bytes to a var, then decode those bytes to a crushmap object
-    let path = Path::new("/tmp/currentmap");
-    let some_crushmap_file = try!(File::open(path).map_err(|e| e.to_string()));
+    let mut path = env::temp_dir();
+    path.push("currentmap");
+    let mut some_crushmap_file = try!(File::open(path).map_err(|e| e.to_string()));
     let mut crushmap_bytes: Vec<u8> = Vec::new();
-    for byte in some_crushmap_file.bytes() {
-        crushmap_bytes.push(byte.unwrap());
-    }
+    some_crushmap_file.read_to_end(&mut crushmap_bytes);
     // The actual Ceph crushmap pulled from our active cluster
     let current_map: crushtool::CrushMap = try!(crushtool::decode_crushmap(&crushmap_bytes[..]));
 
@@ -185,7 +188,7 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
         }
     };
     // Set the current index for the next item
-    current_index += -1;
+    current_index -= 1;
     println!("Current index: {}", current_index);
 
     // Name map and current buckets are pulled out
@@ -254,7 +257,6 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
         if machine_ids.contains(&id) {
             carryover_buckets.insert(bucket.clone());
         }
-
     }
     println!("Carryover buckets: {:?}", carryover_buckets);
 
@@ -265,12 +267,10 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
     // current buckets' indexes. Since the machine is the "top" bucket for each OSD, we grab that
     // index, keeping the tree below untouched.
 
-
     let mut new_rack_items: Vec<(i32, Option<String>)> = Vec::new();
     let mut bucket_name: i32 = 0;
     // For each group of machines in our racks var we make a bucket
     for members in racks {
-
         let mut bucket_items: Vec<(i32, Option<String>)> = Vec::new();
 
         // For each machine in the machines map we grab the bucket items from out machines map.
@@ -305,7 +305,7 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
         final_name_map.push((current_index, bucket_name.to_string()));
         new_rack_items.push((current_index, Some(bucket_name.to_string())));
         new_rack_buckets.push(bucket);
-        current_index += -1;
+        current_index -= 1;
         bucket_name += 1;
     }
     // Make a new default bucket
@@ -332,11 +332,19 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
     final_buckets.extend(new_rack_buckets);
     final_buckets.push(new_default_bucket);
 
+    create_crushmap(final_buckets, machines_map.len() as i32, final_name_map);
+
+    Ok(())
+}
+
+fn create_crushmap(final_buckets: Vec<crushtool::BucketTypes>,
+                   devices: i32, final_name_map: Vec<(i32, String)>) -> Result<(), String> {
+
     let mut new_crushmap: crushtool::CrushMap = crushtool::CrushMap {
         magic: 65536,
         max_buckets: final_buckets.len() as i32,
         max_rules: 1,
-        max_devices: machines_map.len() as i32,
+        max_devices: devices,
         buckets: final_buckets,
         rules: vec![Some(crushtool::Rule {
                         mask: crushtool::CrushRuleMask {
@@ -388,10 +396,28 @@ fn generate_crushmap(racks: HashSet<Vec<String>>) -> Result<(), String> {
     crushtool::set_tunables_jewel(&mut new_crushmap);
     let encoded_crushmap = try!(crushtool::encode_crushmap(new_crushmap)
         .map_err(|e| e.to_string()));
-    let mut finished_map = try!(File::create("/tmp/dct_crushmap").map_err(|e| e.to_string()));
+    let mut path = env::temp_dir();
+    path.push("dct_crushmap");
+    let mut finished_map = try!(File::create(path).map_err(|e| e.to_string()));
 
     try!(finished_map.write_all(&encoded_crushmap[..]).map_err(|e| e.to_string()));
 
     Ok(())
+}
 
+// Parses unit strings from Juju into relations that Crushtool can understand
+fn parse_unit_into_relation(unit: String) -> juju::Relation {
+    let v: Vec<&str> = unit.split('/').collect();
+    let id: usize = match v[1].parse::<usize>() {
+        Ok(i) => i,
+        Err(_) => {juju::log(format!("Could not parse {} into relation.", unit), Some(LogLevel::Error));
+            panic!("Could not parse {} into relation.", unit)},
+
+    };
+
+    let parsed_unit = juju::Relation {
+        name: v[0].to_string(),
+        id: id,
+    };
+    parsed_unit
 }
