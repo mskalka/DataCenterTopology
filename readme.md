@@ -2,6 +2,8 @@
 
 ## Overview
 
+An updated version of this project can be found at: https://github.com/CanonicalLtd/DatacenterTopology
+
 This is an updated repo to store the various working parts of the Data Center Topology project for the Google Summer of Code, 2016.
 
 The aim of this project is to programatically discover which machines in an existing Ceph deployment are behind the same switch, and likely on the same rack, using ARP requests. After gathering this information it generates a new crushmap.
